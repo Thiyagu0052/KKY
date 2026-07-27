@@ -1,6 +1,14 @@
-/* Paste your Supabase project credentials here to enable shared online data. */
+/* Paste your Firebase project credentials here to enable shared online data. */
 window.SILVER_ERP_CONFIG={
-  supabaseUrl:'https://lgnvysxvjhukafabsboc.supabase.co',
-  supabaseAnonKey:'sb_publishable_aPaE0Vo0V9kkuaCPV2rQtQ_asiFwguQ',
-  imageBucket:'silver-entry-images'
+  firebaseConfig:{
+    apiKey: "AIzaSyDhyt2XpE-uT0DzeRZN7z7Ih0yw-P35xdk",
+  authDomain: "kky-silver.firebaseapp.com",
+  projectId: "kky-silver",
+  storageBucket: "kky-silver.firebasestorage.app",
+  messagingSenderId: "1041418058491",
+  appId: "1:1041418058491:web:2b7eba857f2ff2e29c0e5e",
+  measurementId: "G-BKF6YTMEF8"
+  },
+  firebaseCollection:'silver_erp_app',
+  firebaseStoragePath:'silver-entry-images'
 };

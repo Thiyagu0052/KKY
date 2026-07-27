@@ -8,7 +8,7 @@ Open `index.html` in a modern browser. For ES module support and consistent brow
 
 ## Common online data and Android app
 
-The project now includes Supabase support for a common shared register and a PWA manifest for Android installation. Run `supabase/schema.sql` in a new Supabase project's SQL Editor, then paste its Project URL and anon key into `js/config.js`. Deploy the folder to HTTPS hosting. On Android Chrome, open the hosted site and choose **Install app**; entries, photos, and pure totals will be shared across all configured devices.
+The project now supports Firebase for a common shared register and a PWA manifest for Android installation. Create a Firebase project, enable Firestore and Storage, and update the Firebase config values in `js/config.js`. Deploy the folder to HTTPS hosting. On Android Chrome, open the hosted site and choose **Install app**; entries, photos, and pure totals will be shared across all configured devices.
 
 ## Included modules
 

@@ -1,0 +1,22 @@
+Firestore rules:
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /silver_erp_app/{docId} {
+      allow read, write: if true;
+    }
+  }
+}
+
+Storage rules:
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /silver-entry-images/{allPaths=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}
