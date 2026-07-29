@@ -113,9 +113,14 @@ export const db={
     this.push(type,item);
     return item;
   },
-  remove(type,id){
+  async remove(type,id){
     let d=this.get();
-    d[type]=(d[type]||[]).filter(x=>x.id!==id);
+    let a=d[type]||[];
+    const item=a.find(x=>x.id===id);
+    if(type==='silverEntries' && item?.imageUrl){
+      try{await this.deleteImage(item.imageUrl)}catch(e){console.warn('Image deletion failed.',e)}
+    }
+    d[type]=a.filter(x=>x.id!==id);
     this.save(d);
     this.deleteCloud(type,id);
   },
@@ -126,6 +131,32 @@ export const db={
   async deleteCloud(type,id){
     if(!enabled)return;
     try{await syncCloud()}catch(e){console.warn('Cloud deletion pending.',e)}
+  },
+  async deleteImage(imageUrl){
+    if(!imageUrl || imageUrl.startsWith('data:')) return;
+    if(supabaseEnabled){
+      const supabaseUrl = supabaseConfig.url || config.supabaseUrl;
+      const bucket = supabaseConfig.bucket || config.supabaseBucket || 'public';
+      const publicBase = `${(supabaseUrl||'').replace(/\/$/, '')}/storage/v1/object/public/${bucket}/`;
+      if(imageUrl.startsWith(publicBase)){
+        const path = decodeURIComponent(imageUrl.slice(publicBase.length));
+        const deleteUrl = `${(supabaseUrl||'').replace(/\/$/, '')}/storage/v1/object/${bucket}/${encodeURIComponent(path)}`;
+        const supabaseKey = supabaseConfig.key || config.supabaseKey;
+        const res = await fetch(deleteUrl, {method:'DELETE', headers:{'Authorization':`Bearer ${supabaseKey}`}});
+        if(!res.ok) throw new Error('Supabase delete failed '+res.status);
+        return;
+      }
+    }
+    if(enabled){
+      const {storage}=await ensureFirebase();
+      try{
+        const ref = storage.refFromURL(imageUrl);
+        await ref.delete();
+        return;
+      }catch(e){
+        console.warn('Could not delete image from Firebase storage.',e);
+      }
+    }
   },
   async replaceCloud(){
     if(!enabled)return;
