@@ -12,3 +12,11 @@ window.SILVER_ERP_CONFIG={
   firebaseCollection:'silver_erp_app',
   firebaseStoragePath:'silver-entry-images'
 };
+
+// Supabase configuration: add your project details here.
+// NOTE: do not commit service_role keys or DB passwords to public repos.
+window.SILVER_ERP_CONFIG.supabase = {
+  url: 'https://lgnvysxvjhukafabsboc.supabase.co',
+  key: 'sb_publishable_aPaE0Vo0V9kkuaCPV2rQtQ_asiFwguQ', // anon/public key
+  bucket: 'public'
+};
