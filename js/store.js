@@ -30,7 +30,29 @@ async function ensureFirebase(){
 }
 
 async function syncCloud(data=dbData()){
-  if(!enabled)return;
+  // Prefer Supabase when configured
+  if(supabaseEnabled){
+    try{
+      const supabaseUrl = supabaseConfig.url || config.supabaseUrl;
+      const supabaseKey = supabaseConfig.key || config.supabaseKey;
+      const bucket = supabaseConfig.bucket || config.supabaseBucket || 'public';
+      const base = (supabaseUrl||'').replace(/\/$/,'');
+      const upsert = async (type, items)=>{
+        for(const item of (items||[])){
+          const body = {record_type:type, record_id:item.id, payload:item};
+          const url = `${base}/rest/v1/silver_erp_records?on_conflict=record_type,record_id`;
+          await fetch(url, {method:'POST', headers:{'Content-Type':'application/json','apikey':supabaseKey,'Authorization':`Bearer ${supabaseKey}`,'Prefer':'resolution=merge-duplicates'}, body:JSON.stringify(body)});
+        }
+      };
+      await upsert('shops', data.shops||[]);
+      await upsert('silverEntries', data.silverEntries||[]);
+      return;
+    }catch(e){
+      console.warn('Supabase sync failed; falling back to other providers.', e);
+    }
+  }
+  // Fallback: Firebase
+  if(!enabled) return;
   try{
     const {db}=await ensureFirebase();
     const docRef=db.collection(config.firebaseCollection||'silver_erp_app').doc('state');
@@ -94,8 +116,28 @@ async function compressImage(file, opts={maxWidth:2048,maxHeight:2048,quality:0.
 
 export const db={
   async init(){
-    if(!localStorage.getItem(KEY))this.save({shops:[],silverEntries:[]});
-    if(!enabled)return;
+    if(!localStorage.getItem(KEY)) this.save({shops:[],silverEntries:[]});
+    // Prefer Supabase for loading shared data
+    if(supabaseEnabled){
+      try{
+        const supabaseUrl = supabaseConfig.url || config.supabaseUrl;
+        const supabaseKey = supabaseConfig.key || config.supabaseKey;
+        const base = (supabaseUrl||'').replace(/\/$/,'');
+        const url = `${base}/rest/v1/silver_erp_records?select=record_type,record_id,payload`;
+        const res = await fetch(url, {headers:{'apikey':supabaseKey,'Authorization':`Bearer ${supabaseKey}`}});
+        if(res.ok){
+          const rows = await res.json();
+          const shops = (rows||[]).filter(r=>r.record_type==='shops').map(r=>r.payload||{});
+          const silverEntries = (rows||[]).filter(r=>r.record_type==='silverEntries').map(r=>r.payload||{});
+          this.save({shops:shops||[],silverEntries:silverEntries||[]});
+          return;
+        }
+      }catch(e){
+        console.warn('Supabase data unavailable; falling back to other providers.', e);
+      }
+    }
+    // Fallback to Firebase if configured
+    if(!enabled) return;
     try{
       const {db}=await ensureFirebase();
       const snap=await db.collection(config.firebaseCollection||'silver_erp_app').doc('state').get();
@@ -130,14 +172,40 @@ export const db={
     }
     d[type]=a.filter(x=>x.id!==id);
     this.save(d);
-    this.deleteCloud(type,id);
+    await this.deleteCloud(type,id);
   },
   async push(type,payload){
-    if(!enabled)return;
+    // If Supabase is configured, upsert this single record
+    if(supabaseEnabled){
+      try{
+        const supabaseUrl = supabaseConfig.url || config.supabaseUrl;
+        const supabaseKey = supabaseConfig.key || config.supabaseKey;
+        const base = (supabaseUrl||'').replace(/\/$/,'');
+        const url = `${base}/rest/v1/silver_erp_records?on_conflict=record_type,record_id`;
+        const body = {record_type:type, record_id:payload.id, payload:payload};
+        await fetch(url, {method:'POST', headers:{'Content-Type':'application/json','apikey':supabaseKey,'Authorization':`Bearer ${supabaseKey}`,'Prefer':'resolution=merge-duplicates'}, body:JSON.stringify(body)});
+        return;
+      }catch(e){
+        console.warn('Supabase single push failed; will try full sync.', e);
+      }
+    }
+    if(!enabled) return;
     try{await syncCloud()}catch(e){console.warn('Cloud sync pending.',e)}
   },
   async deleteCloud(type,id){
-    if(!enabled)return;
+    if(supabaseEnabled){
+      try{
+        const supabaseUrl = supabaseConfig.url || config.supabaseUrl;
+        const supabaseKey = supabaseConfig.key || config.supabaseKey;
+        const base = (supabaseUrl||'').replace(/\/$/,'');
+        const url = `${base}/rest/v1/silver_erp_records?record_type=eq.${encodeURIComponent(type)}&record_id=eq.${encodeURIComponent(id)}`;
+        await fetch(url, {method:'DELETE', headers:{'apikey':supabaseKey,'Authorization':`Bearer ${supabaseKey}`}});
+        return;
+      }catch(e){
+        console.warn('Supabase deletion failed; will try full sync.', e);
+      }
+    }
+    if(!enabled) return;
     try{await syncCloud()}catch(e){console.warn('Cloud deletion pending.',e)}
   },
   async deleteImage(imageUrl){
@@ -150,7 +218,7 @@ export const db={
         const path = decodeURIComponent(imageUrl.slice(publicBase.length));
         const deleteUrl = `${(supabaseUrl||'').replace(/\/$/, '')}/storage/v1/object/${bucket}/${encodeURIComponent(path)}`;
         const supabaseKey = supabaseConfig.key || config.supabaseKey;
-        const res = await fetch(deleteUrl, {method:'DELETE', headers:{'Authorization':`Bearer ${supabaseKey}`}});
+        const res = await fetch(deleteUrl, {method:'DELETE', headers:{'Authorization':`Bearer ${supabaseKey}`,'apikey':supabaseKey}});
         if(!res.ok) throw new Error('Supabase delete failed '+res.status);
         return;
       }
@@ -167,8 +235,7 @@ export const db={
     }
   },
   async replaceCloud(){
-    if(!enabled)return;
-    await syncCloud();
+    if(supabaseEnabled || enabled) await syncCloud();
   },
   async saveImage(file){
     if(!file)return '';
@@ -181,7 +248,7 @@ export const db={
         const compressed = await compressImage(file, {maxWidth:2048,maxHeight:2048,quality:0.95,outputType:inferOutputType(file)});
         const body = compressed instanceof Blob ? compressed : file;
         const uploadUrl = `${(supabaseUrl||'').replace(/\/$/,'')}/storage/v1/object/${bucket}/${encodeURIComponent(path)}`;
-        const res = await fetch(uploadUrl, {method:'PUT',headers:{'Authorization':`Bearer ${supabaseKey}`,'x-upsert':'true'},body});
+        const res = await fetch(uploadUrl, {method:'PUT',headers:{'Authorization':`Bearer ${supabaseKey}`,'apikey':supabaseKey,'x-upsert':'true'},body});
         if(!res.ok) throw new Error('Supabase upload failed '+res.status);
         const publicUrl = `${(supabaseUrl||'').replace(/\/$/,'')}/storage/v1/object/public/${bucket}/${encodeURIComponent(path)}`;
         return publicUrl;
